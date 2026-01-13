@@ -6,6 +6,8 @@ const router = Router();
 
 // Rutas públicas
 router.post("/login", auth_controller.login.bind(auth_controller));
+router.post("/refresh", auth_controller.refresh.bind(auth_controller));
+router.post("/logout", auth_controller.logout.bind(auth_controller));
 router.get(
   "/check-handle/:handle",
   auth_controller.check_handle.bind(auth_controller)

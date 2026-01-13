@@ -11,4 +11,5 @@ export const collections = {
   leagues: "leagues",
   tournaments: "tournaments",
   divisions: "divisions",
+  refresh_tokens: "refresh_tokens",
 };

@@ -10,6 +10,7 @@
 
 import express from "express";
 import { createServer, Server } from "http";
+import cookieParser from "cookie-parser";
 import logger from "./config/logger";
 import { env } from "./config/environment";
 import {
@@ -30,6 +31,8 @@ import {
 import { create_main_router } from "./routes";
 import { db } from "./services/database.service";
 import { firebase_service } from "./services/firebase.service";
+import { redis_service } from "./services/redis.service";
+import { refresh_queue_service } from "./services/refresh_queue.service";
 
 /**
  * Configura los middlewares de Express en el orden correcto
@@ -75,19 +78,23 @@ const configure_middlewares = (app: express.Application): void => {
   // Limita el número de peticiones por IP para prevenir abuso
   app.use(rate_limit_middleware);
 
-  // 7. Parser JSON con límite de 10MB
+  // 7. Cookie parser
+  // Parsea cookies de las peticiones HTTP
+  app.use(cookieParser());
+
+  // 8. Parser JSON con límite de 10MB
   // Parsea el cuerpo de las peticiones JSON con límite de tamaño
   app.use(express.json({ limit: "10mb" }));
 
-  // 8. Parser URL encoded
+  // 9. Parser URL encoded
   // Parsea datos de formularios con límite de tamaño
   app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-  // 9. Middleware de timing para respuestas JSON
+  // 10. Middleware de timing para respuestas JSON
   // Añade información de timing a las respuestas JSON
   app.use(add_timing_to_response);
 
-  // 10. Middleware de verificación de salud del servidor
+  // 11. Middleware de verificación de salud del servidor
   // Verifica que el servidor esté completamente iniciado antes de procesar peticiones
   app.use(health_check_middleware);
 
@@ -225,6 +232,10 @@ const configure_graceful_shutdown = (server: Server): void => {
       // Marcar servidor como no listo
       process.env.SERVER_READY = "false";
 
+      // Cerrar refresh queue y Redis
+      await refresh_queue_service.close();
+      await redis_service.disconnect();
+
       // Desconectar base de datos
       await db.disconnect();
 
@@ -250,9 +261,22 @@ const start_application = async (): Promise<void> => {
   try {
     // Inicializar Firebase Admin SDK
     firebase_service.initialize();
-    
+
     // Conectar a la base de datos
     await db.connect();
+
+    // Conectar a Redis (opcional en desarrollo)
+    await redis_service.connect();
+
+    // Inicializar refresh queue (solo si Redis está disponible)
+    if (redis_service.is_ready()) {
+      await refresh_queue_service.initialize();
+    } else {
+      logger.warn(
+        "Skipping refresh queue initialization - Redis not available"
+      );
+    }
+
     const app = create_application();
     const server = await start_server(app);
     configure_graceful_shutdown(server);
