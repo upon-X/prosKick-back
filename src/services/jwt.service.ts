@@ -98,9 +98,15 @@ class JWTService {
         type: "access",
       };
 
-      const access_token = jwt.sign(access_payload, env.JWT_SECRET, {
-        expiresIn: env.JWT_ACCESS_EXPIRY,
-      });
+      const access_options: jwt.SignOptions = {
+        expiresIn: env.JWT_ACCESS_EXPIRY as any,
+      };
+
+      const access_token = jwt.sign(
+        access_payload,
+        env.JWT_SECRET as jwt.Secret,
+        access_options
+      );
 
       // 2. Generar Refresh Token
       const refresh_payload: IRefreshTokenPayload = {
@@ -110,9 +116,15 @@ class JWTService {
         type: "refresh",
       };
 
-      const refresh_token = jwt.sign(refresh_payload, env.JWT_REFRESH_SECRET, {
-        expiresIn: refresh_expiry,
-      });
+      const refresh_options: jwt.SignOptions = {
+        expiresIn: refresh_expiry as any,
+      };
+
+      const refresh_token = jwt.sign(
+        refresh_payload,
+        env.JWT_REFRESH_SECRET as jwt.Secret,
+        refresh_options
+      );
 
       // 3. Almacenar hash del refresh token en MongoDB
       const token_hash = this.hash_token(refresh_token);
@@ -146,9 +158,12 @@ class JWTService {
   /**
    * Verifica y decodifica un Access Token
    */
-  verify_access_token(token: string): IAccessTokenPayload {
+  async verify_access_token(token: string): Promise<IAccessTokenPayload> {
     try {
-      const decoded = jwt.verify(token, env.JWT_SECRET) as IAccessTokenPayload;
+      const decoded = jwt.verify(
+        token,
+        env.JWT_SECRET as jwt.Secret
+      ) as IAccessTokenPayload;
 
       if (decoded.type !== "access") {
         throw new Error("Invalid token type");
@@ -168,11 +183,11 @@ class JWTService {
   /**
    * Verifica y decodifica un Refresh Token
    */
-  verify_refresh_token(token: string): IRefreshTokenPayload {
+  async verify_refresh_token(token: string): Promise<IRefreshTokenPayload> {
     try {
       const decoded = jwt.verify(
         token,
-        env.JWT_REFRESH_SECRET
+        env.JWT_REFRESH_SECRET as jwt.Secret
       ) as IRefreshTokenPayload;
 
       if (decoded.type !== "refresh") {
@@ -199,7 +214,7 @@ class JWTService {
   ): Promise<ITokenRotationResult> {
     try {
       // 1. Verificar el refresh token
-      const decoded = this.verify_refresh_token(refresh_token);
+      const decoded = await this.verify_refresh_token(refresh_token);
 
       // 2. Buscar el token en la base de datos
       const token_hash = this.hash_token(refresh_token);

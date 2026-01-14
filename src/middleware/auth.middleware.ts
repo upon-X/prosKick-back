@@ -21,7 +21,7 @@ declare global {
 
 /**
  * Middleware de autenticación dual: Cookies (web) o Authorization header (mobile)
- * Prioridad: 1. Cookie accessToken, 2. Authorization header
+ * Prioridad: 1. Cookie access_token, 2. Authorization header
  */
 export const authenticate_token = async (
   req: Request,
@@ -32,20 +32,39 @@ export const authenticate_token = async (
     let token: string | undefined;
     let token_source: "cookie" | "header" | null = null;
 
-    // 1. Intentar obtener token de cookie (web apps via Next.js proxy)
-    if (req.cookies && req.cookies.accessToken) {
-      token = req.cookies.accessToken;
+    logger.debug("Auth middleware - Request details", {
+      path: req.path,
+      method: req.method,
+      headers: {
+        authorization: req.headers.authorization ? "present" : "missing",
+        cookie: req.headers.cookie ? "present" : "missing",
+      },
+      cookies_parsed: req.cookies,
+      cookies_keys: Object.keys(req.cookies || {}),
+    });
+
+    // 1. Intentar obtener token de cookie (web apps)
+    if (req.cookies && req.cookies.access_token) {
+      token = req.cookies.access_token;
       token_source = "cookie";
     }
     // 2. Fallback a Authorization header (mobile apps o requests directos)
     else if (req.headers.authorization) {
       const auth_header = req.headers.authorization;
-      const bearer_token = auth_header.split(" ")[1];
-      if (bearer_token) {
-        token = bearer_token;
+      if (auth_header.startsWith("Bearer ")) {
+        token = auth_header.substring(7);
         token_source = "header";
       }
     }
+
+    logger.debug("Auth attempt", {
+      has_cookie: !!req.cookies?.access_token,
+      has_header: !!req.headers.authorization,
+      token_source,
+      cookies: Object.keys(req.cookies || {}),
+      path: req.path,
+      token_preview: token ? token.substring(0, 20) + "..." : "no token",
+    });
 
     if (!token) {
       res.status(401).json({
@@ -56,7 +75,9 @@ export const authenticate_token = async (
     }
 
     // Verificar access token JWT
-    const decoded_token = jwt_service.verify_access_token(token);
+    logger.debug("Verificando token JWT...");
+    const decoded_token = await jwt_service.verify_access_token(token);
+    logger.debug("Token JWT verificado:", { user_id: decoded_token.user_id });
 
     // Buscar usuario en nuestra DB
     const user = await User.findById(decoded_token.user_id);
@@ -76,16 +97,26 @@ export const authenticate_token = async (
 
     // Agregar información del usuario a la request
     req.user = {
-      id: user._id,
+      id: user._id.toString(),
       email: user.email || undefined,
       roles: user.roles,
       player_profile: player_profile,
     };
 
-    logger.debug(`User authenticated via ${token_source}: ${user._id}`);
+    logger.debug(`User authenticated via ${token_source}:`, {
+      user_id: user._id.toString(),
+      email: user.email,
+    });
+
     next();
   } catch (error) {
-    logger.error("Error en autenticación:", error);
+    logger.error("Error en autenticación:", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      errorType: error?.constructor?.name,
+      path: req.path,
+      fullError: error,
+    });
 
     if (error instanceof Error) {
       if (error.message.includes("expired")) {
@@ -99,9 +130,9 @@ export const authenticate_token = async (
           message: "El token de acceso no es válido",
         });
       } else {
-        res.status(500).json({
+        res.status(401).json({
           error: "Error de autenticación",
-          message: "Error interno del servidor",
+          message: error.message || "Error desconocido",
         });
       }
     } else {
@@ -149,22 +180,30 @@ export const optional_authenticate = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const auth_header = req.headers.authorization;
-    const token = auth_header && auth_header.split(" ")[1];
+    let token: string | undefined;
+
+    // Intentar obtener de cookie primero
+    if (req.cookies && req.cookies.access_token) {
+      token = req.cookies.access_token;
+    }
+    // Fallback a header
+    else if (req.headers.authorization) {
+      const auth_header = req.headers.authorization;
+      if (auth_header.startsWith("Bearer ")) {
+        token = auth_header.substring(7);
+      }
+    }
 
     if (!token) {
       next();
       return;
     }
 
-    // Verificar token con Firebase
-    const decoded_token = await firebase_service.verify_id_token(token);
+    // Verificar token JWT
+    const decoded_token = await jwt_service.verify_access_token(token);
 
-    // Buscar usuario en nuestra DB por providers.sub
-    const user = await User.findOne({
-      "providers.sub": decoded_token.uid,
-      "providers.type": "google",
-    });
+    // Buscar usuario en nuestra DB
+    const user = await User.findById(decoded_token.user_id);
 
     if (user) {
       // Obtener perfil de jugador
@@ -174,7 +213,7 @@ export const optional_authenticate = async (
 
       // Agregar información del usuario a la request
       req.user = {
-        id: user._id,
+        id: user._id.toString(),
         email: user.email || undefined,
         roles: user.roles,
         player_profile: player_profile,
@@ -184,7 +223,9 @@ export const optional_authenticate = async (
     next();
   } catch (error) {
     // En caso de error, continuar sin usuario autenticado
-    logger.warn("Error en autenticación opcional:", { error: String(error) });
+    logger.debug("Error en autenticación opcional:", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     next();
   }
 };

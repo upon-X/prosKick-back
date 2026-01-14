@@ -44,9 +44,6 @@ class DatabaseService {
       this.connection_attempts = 0;
 
       logger.info("Conexión a MongoDB establecida exitosamente", {
-        host: mongoose.connection.host,
-        port: mongoose.connection.port,
-        database: mongoose.connection.name,
         ready_state: mongoose.connection.readyState,
       });
 

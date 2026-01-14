@@ -28,7 +28,7 @@ export class AuthController {
     const cookie_domain = is_production ? undefined : undefined; // Configurar dominio en prod si es necesario
 
     // Access token cookie (httpOnly, corta duración)
-    res.cookie("accessToken", access_token, {
+    res.cookie("access_token", access_token, {
       httpOnly: true,
       secure: is_production, // HTTPS only en producción
       sameSite: is_production ? "none" : "lax", // 'none' para cross-domain en prod
@@ -39,7 +39,7 @@ export class AuthController {
 
     // Refresh token cookie (httpOnly, larga duración)
     const refresh_max_age = this.parse_expiry_to_ms(refresh_expires_in);
-    res.cookie("refreshToken", refresh_token, {
+    res.cookie("refresh_token", refresh_token, {
       httpOnly: true,
       secure: is_production,
       sameSite: is_production ? "none" : "lax",
@@ -78,8 +78,8 @@ export class AuthController {
       path: "/",
     };
 
-    res.clearCookie("accessToken", cookie_options);
-    res.clearCookie("refreshToken", cookie_options);
+    res.clearCookie("access_token", cookie_options);
+    res.clearCookie("refresh_token", cookie_options);
   }
 
   /**
@@ -269,8 +269,8 @@ export class AuthController {
       let token_source: "cookie" | "header" | null = null;
 
       // 1. Intentar obtener refresh token de cookie (web)
-      if (req.cookies && req.cookies.refreshToken) {
-        refresh_token = req.cookies.refreshToken;
+      if (req.cookies && req.cookies.refresh_token) {
+        refresh_token = req.cookies.refresh_token;
         token_source = "cookie";
       }
       // 2. Fallback a Authorization header (mobile)
@@ -361,8 +361,8 @@ export class AuthController {
       let token_source: "cookie" | "header" | null = null;
 
       // Obtener refresh token
-      if (req.cookies && req.cookies.refreshToken) {
-        refresh_token = req.cookies.refreshToken;
+      if (req.cookies && req.cookies.refresh_token) {
+        refresh_token = req.cookies.refresh_token;
         token_source = "cookie";
       } else if (req.headers.authorization) {
         const auth_header = req.headers.authorization;
